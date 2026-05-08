@@ -19,6 +19,7 @@ FONT_THICKNESS = 1
 HANDEDNESS_TEXT_COLOR = (88, 205, 54) # vibrant green
 
 latest_result = None
+position_list = []
 
 def draw_landmarks_on_image(rgb_image, detection_result):
     try:
@@ -39,11 +40,38 @@ def draw_landmarks_on_image(rgb_image, detection_result):
     except Exception:
         return rgb_image
     
+scroll_position_list = []
+
+def sequential_processing(detection_result, position_list=scroll_position_list):
+    # print("HEY")
+    hand_landmarks_list = detection_result.hand_landmarks
+    if not hand_landmarks_list:
+        return False 
+    
+    # x is for up and down, y is for right and left. If we go up, y coordinates decrease, if we go down, y coordinates increase. 
+    
+    for hand_landmarks in hand_landmarks_list:
+        index_finger_tip = hand_landmarks[8]
+        middle_finger_tip = hand_landmarks[12]
+
+        # print("Index Finger: ", index_finger_tip.y)
+        # print("Middle Finger: ", middle_finger_tip.y)
+
+        
+        position_list.append([index_finger_tip.y, middle_finger_tip.y])
+        try:
+            if position_list[len(position_list) - 1] > position_list[len(position_list) - 4]:
+                print("Scrolling down")
+        except Exception:
+            continue
+    # print(position_list)
+
+    
 def detect_touch(detection_result, threshold=0.1):
     hand_landmarks_list = detection_result.hand_landmarks
     if not hand_landmarks_list:
         return False
-    
+
     for hand_landmarks in hand_landmarks_list:
         try:
             thumb_tip = hand_landmarks[4]
@@ -57,14 +85,20 @@ def detect_touch(detection_result, threshold=0.1):
         dz = getattr(thumb_tip, 'z', 0) - getattr(ring_finger_tip, 'z', 0)
 
         if dz * dz + dy * dy + dx * dx < threshold * threshold:
-            print("YAHOO")
+            # print("YAHOO")
+            # print(position_list)
+            sequential_processing(detection_result)
             return True
+        
+        
     
     return False
 
 def print_result(result: HandLandmarkerResult, output_image: mp.Image, timestamp_ms: int): # type: ignore
     global latest_result
     latest_result = result
+    position_list.append(latest_result)
+    
 
 options = vision.HandLandmarkerOptions(
     base_options=base_options,
