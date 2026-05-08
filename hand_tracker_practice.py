@@ -4,6 +4,7 @@ from mediapipe.tasks.python import vision
 import cv2
 import time
 import numpy as np
+import json
 
 base_options = python.BaseOptions(model_asset_path = "hand_landmarker.task")
 HandLandmarkerResult = mp.tasks.vision.HandLandmarkerResult
@@ -42,31 +43,69 @@ def draw_landmarks_on_image(rgb_image, detection_result):
     
 scroll_position_list = []
 
-def sequential_processing(detection_result, position_list=scroll_position_list):
+def scroll_down(detection_result, position_list=scroll_position_list):
     # print("HEY")
     hand_landmarks_list = detection_result.hand_landmarks
     if not hand_landmarks_list:
         return False 
     
     # x is for up and down, y is for right and left. If we go up, y coordinates decrease, if we go down, y coordinates increase. 
-    
     for hand_landmarks in hand_landmarks_list:
         index_finger_tip = hand_landmarks[8]
         middle_finger_tip = hand_landmarks[12]
 
         # print("Index Finger: ", index_finger_tip.y)
         # print("Middle Finger: ", middle_finger_tip.y)
-
         
         position_list.append([index_finger_tip.y, middle_finger_tip.y])
         try:
-            if position_list[len(position_list) - 1] > position_list[len(position_list) - 4]:
+            current_pos = position_list[len(position_list) - 1]
+            old_pos = position_list[len(position_list) - 30]
+            movement_threshold = 0.08 
+            
+            if (current_pos[0] - old_pos[0] > movement_threshold and 
+                current_pos[1] - old_pos[1] > movement_threshold):
                 print("Scrolling down")
+                with open('scroll_status.json', 'w') as f:
+                    json.dump({"scroll": "down"}, f)
+            # elif (current_pos[0] - old_pos[0] < movement_threshold and 
+            #     current_pos[1] - old_pos[1] < movement_threshold):
+            #     print("Scrolling up")
         except Exception:
             continue
+        
     # print(position_list)
 
+def scroll_up(detection_result, position_list=scroll_position_list):
+    # print("HEY")
+    hand_landmarks_list = detection_result.hand_landmarks
+    if not hand_landmarks_list:
+        return False 
     
+    # x is for up and down, y is for right and left. If we go up, y coordinates decrease, if we go down, y coordinates increase. 
+    for hand_landmarks in hand_landmarks_list:
+        index_finger_tip = hand_landmarks[8]
+        middle_finger_tip = hand_landmarks[12]
+
+        # print("Index Finger: ", index_finger_tip.y)
+        # print("Middle Finger: ", middle_finger_tip.y)
+        
+        position_list.append([index_finger_tip.y, middle_finger_tip.y])
+        try:
+            current_pos = position_list[len(position_list) - 1]
+            old_pos = position_list[len(position_list) - 30]
+            movement_threshold = 0.08 
+            
+            if (current_pos[0] - old_pos[0] < movement_threshold and 
+                current_pos[1] - old_pos[1] < movement_threshold):
+                print("Scrolling up")
+                with open('scroll_status.json', 'w') as f:
+                    json.dump({"scroll": "up"}, f)
+        except Exception:
+            continue
+        
+    # print(position_list)
+
 def detect_touch(detection_result, threshold=0.1):
     hand_landmarks_list = detection_result.hand_landmarks
     if not hand_landmarks_list:
@@ -76,21 +115,27 @@ def detect_touch(detection_result, threshold=0.1):
         try:
             thumb_tip = hand_landmarks[4]
             ring_finger_tip = hand_landmarks[16]
+            pinky_tip = hand_landmarks[20]
 
         except Exception:
             continue
 
-        dx = thumb_tip.x - ring_finger_tip.x
-        dy = thumb_tip.y - ring_finger_tip.y
-        dz = getattr(thumb_tip, 'z', 0) - getattr(ring_finger_tip, 'z', 0)
+        dx_down = thumb_tip.x - ring_finger_tip.x
+        dy_down = thumb_tip.y - ring_finger_tip.y
+        dz_down = thumb_tip.z - ring_finger_tip.z
 
-        if dz * dz + dy * dy + dx * dx < threshold * threshold:
+        dx_up = thumb_tip.x - pinky_tip.x
+        dy_up = thumb_tip.y - pinky_tip.y
+        dz_up = thumb_tip.z - pinky_tip.z
+
+        if dz_down * dz_down + dy_down * dy_down + dx_down * dx_down < threshold * threshold:
             # print("YAHOO")
             # print(position_list)
-            sequential_processing(detection_result)
+            scroll_down(detection_result)
             return True
-        
-        
+        elif dx_up * dx_up + dy_up * dy_up + dz_up * dz_up < threshold * threshold:
+            scroll_up(detection_result)
+            return True
     
     return False
 
@@ -125,7 +170,11 @@ while True:
     if latest_result is not None:
         frame = draw_landmarks_on_image(frame, latest_result)
     cv2.imshow('frame', frame)
-    detect_touch(latest_result)
+    scrolled = detect_touch(latest_result)
+
+    if not scrolled:
+        with open('scroll_status.json', 'w') as f:
+            json.dump({"scroll": "none"}, f)
 
     if cv2.waitKey(1) == ord('q'):
         break
