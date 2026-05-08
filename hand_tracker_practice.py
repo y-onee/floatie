@@ -38,7 +38,29 @@ def draw_landmarks_on_image(rgb_image, detection_result):
         return annotated_image
     except Exception:
         return rgb_image
+    
+def detect_touch(detection_result, threshold=0.1):
+    hand_landmarks_list = detection_result.hand_landmarks
+    if not hand_landmarks_list:
+        return False
+    
+    for hand_landmarks in hand_landmarks_list:
+        try:
+            thumb_tip = hand_landmarks[4]
+            ring_finger_tip = hand_landmarks[16]
 
+        except Exception:
+            continue
+
+        dx = thumb_tip.x - ring_finger_tip.x
+        dy = thumb_tip.y - ring_finger_tip.y
+        dz = getattr(thumb_tip, 'z', 0) - getattr(ring_finger_tip, 'z', 0)
+
+        if dz * dz + dy * dy + dx * dx < threshold * threshold:
+            print("YAHOO")
+            return True
+    
+    return False
 
 def print_result(result: HandLandmarkerResult, output_image: mp.Image, timestamp_ms: int): # type: ignore
     global latest_result
@@ -69,6 +91,7 @@ while True:
     if latest_result is not None:
         frame = draw_landmarks_on_image(frame, latest_result)
     cv2.imshow('frame', frame)
+    detect_touch(latest_result)
 
     if cv2.waitKey(1) == ord('q'):
         break
